@@ -1,100 +1,180 @@
-// routes/userRoutes.js
 const express = require('express');
+const Book = require('../models/Book'); // Adjust path based on your directory structure
+const User = require('../models/User'); // Adjust path based on your directory structure
+const Request = require('../models/Request'); // Adjust the path based on your directory structure
+
 const router = express.Router();
-const mongoose = require('mongoose');
-const Book = require('../models/Book');
 
-// Create a new user
+// Create a new book
 router.post('/', async (req, res) => {
-  
-  const { title, author, summary, category, userId } = req.body;
-
   try {
-      // Validate and convert `userId` to ObjectId
-      if (!mongoose.Types.ObjectId.isValid(userId)) {
-          return res.status(400).json({ error: 'Invalid user ID format' });
-      }
+    const { Title, Author, Genre, PublishedYear, OwnerID } = req.body;
 
-      const ownerObjectId = new mongoose.Types.ObjectId(userId);
+    const newBook = new Book({
+      Title,
+      Author,
+      Genre,
+      PublishedYear,
+      OwnerID,
+    });
 
-      // Create the new book document
-      const newBook = new Book({
-          title,
-          author,
-          summary,
-          category,
-          owner: ownerObjectId,
-          isListed: true, // Set defaults if needed
-          isBorrowed: false
-      });
-
-      // Save the book to the database
-      const savedBook = await newBook.save();
-      res.status(201).json(savedBook);
+    const savedBook = await newBook.save();
+    res.status(201).json(savedBook);
   } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Failed to add the book' });
+    res.status(400).json({ error: error.message });
   }
-
 });
 
-// Read all users
+// GET route to get all books where isAvailable is true
+router.get('/available-books/', async (req, res) => {
+  try {
+    // Find all books where the logged-in user is the owner
+    //const {id} = req.params; // Assume userId is available after authentication (via JWT or session)
+
+    const { search = '', page = 1, limit  } = req.query;
+
+    // Build the query object for search
+    const query = {
+      
+      $and: [
+        { IsAvailable: true }, // Filter by owner if provided
+        {
+          $or: [
+            { Title: { $regex: search, $options: 'i' } }, // Case-insensitive search on title
+            { Author: { $regex: search, $options: 'i' } }, // Case-insensitive search on author
+            { Genre: { $regex: search, $options: 'i' } }, 
+          ],
+        },
+      ],
+    };
+
+    // Calculate the number of documents to skip
+    const skip = (page - 1) * limit;
+
+    // Find books where the User is the owner
+    const books = await Book.find(query).skip(skip).limit(Number(limit)).populate({
+      path: 'Requests',  // Populate the requests field (child records)
+      select: 'RequestedBy RequestDate Status', // Select the fields to return from the ExchangeRequest
+      populate: {
+        path: 'RequestedBy',  // Populate the requestedBy field (user who requested the book)
+        select: 'Name Email'  // Only select Name and Email fields of the user
+      }
+    })
+    .exec();
+     // Get the total count of books matching the query
+    const totalBooks = await Book.countDocuments(query);
+
+    if (books.length === 0) {
+      return res.status(404).json({ message: 'No books found for this user' });
+    }
+
+    // Fetch user details
+    //const user = await User.findById(id);
+
+    // Return the user data along with the books they own
+    res.status(200).json({  books,totalBooks,totalPages: Math.ceil(totalBooks / limit) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all books
 router.get('/', async (req, res) => {
   try {
+    const books = await Book.find().populate('OwnerID', 'username email'); // Adjust fields as needed
+    res.status(200).json(books);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-        // Destructure query parameters (with default values)
-        const { isListed, isBorrowed, author,userId } = req.query;
-    
-        // Build the query object
-        let query = {};
-
-        if (mongoose.Types.ObjectId.isValid(userId)) {
-          query.owner = new mongoose.Types.ObjectId(userId);
-        }
-
-        if (isListed !== undefined) {
-            query.isListed = isListed === 'true'; // Convert 'true'/'false' string to boolean
-        }
-
-        if (isBorrowed !== undefined) {
-            query.isBorrowed = isBorrowed === 'true'; // Convert 'true'/'false' string to boolean
-        }
-
-        if (author) {
-            query.author = { $regex: new RegExp(author, 'i') }; // Case-insensitive search for author
-        }
-
-        const books = await Book.find(query);
-        res.send(books);
-
-  } catch (err) {
-    res.status(500).send(err);
+// Get a specific book by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const book = await Book.findById(req.params.id).populate('OwnerID', 'username email');
+    if (!book) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+    res.status(200).json(book);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
 
 
 
+// Get Books By Owner
+router.get('/owner/:id', async (req, res) => {
+  try {
+    // Find all books where the logged-in user is the owner
+    const {id} = req.params; // Assume userId is available after authentication (via JWT or session)
 
-// Update a book
+    const { search = '', page = 1, limit  } = req.query;
+
+    // Build the query object for search
+    const query = {
+      $and: [
+        id ? { OwnerID: id } : {}, // Filter by owner if provided
+        {
+          $or: [
+            { Title: { $regex: search, $options: 'i' } }, // Case-insensitive search on title
+            { Author: { $regex: search, $options: 'i' } }, // Case-insensitive search on author
+            { Genre: { $regex: search, $options: 'i' } }, 
+          ],
+        },
+      ],
+    };
+
+    // Calculate the number of documents to skip
+    const skip = (page - 1) * limit;
+
+    // Find books where the User is the owner
+    const books = await Book.find(query).skip(skip).limit(Number(limit));
+     // Get the total count of books matching the query
+    const totalBooks = await Book.countDocuments(query);
+
+    if (books.length === 0) {
+      return res.status(404).json({ message: 'No books found for this user' });
+    }
+
+    // Fetch user details
+    const user = await User.findById(id);
+
+    // Return the user data along with the books they own
+    res.status(200).json({ user, books,totalBooks,totalPages: Math.ceil(totalBooks / limit) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update a book's details
 router.put('/:id', async (req, res) => {
   try {
-    const book = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!book) return res.status(404).send();
-    res.send(book);
-  } catch (err) {
-    res.status(400).send(err);
+    const updatedBook = await Book.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true, // Ensure validators run during update
+    });
+
+    if (!updatedBook) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+    res.status(200).json(updatedBook);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 
 // Delete a book
 router.delete('/:id', async (req, res) => {
   try {
-    const book = await User.findByIdAndDelete(req.params.id);
-    if (!book) return res.status(404).send();
-    res.send(book);
-  } catch (err) {
-    res.status(500).send(err);
+    const deletedBook = await Book.findByIdAndDelete(req.params.id);
+    if (!deletedBook) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+    res.status(200).json({ message: 'Book deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

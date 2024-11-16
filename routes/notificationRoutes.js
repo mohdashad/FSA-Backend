@@ -1,85 +1,103 @@
-// routes/userRoutes.js
 const express = require('express');
+const Notification = require('../models/Notification'); // Adjust path based on your directory structure
+
 const router = express.Router();
-const mongoose = require('mongoose');
-const Notification = require('../models/Notification');
 
-// Create a new user
+// Create a new notification
 router.post('/', async (req, res) => {
-  
-  const { title, message, isRead, userId } = req.body;
-
   try {
-      // Validate and convert `userId` to ObjectId
-      if (!mongoose.Types.ObjectId.isValid(userId)) {
-          return res.status(400).json({ error: 'Invalid user ID format' });
-      }
+    const { UserID, Message, Type } = req.body;
 
-      const ownerObjectId = new mongoose.Types.ObjectId(userId);
+    const newNotification = new Notification({
+      UserID,
+      Message,
+      Type,
+    });
 
-      // Create the new book document
-      const noti = new Notification({
-          title,
-          message,
-          isRead,
-          owner: ownerObjectId
-      });
-
-      // Save the book to the database
-      const savedNoti = await noti.save();
-      res.status(201).json(savedNoti);
+    const savedNotification = await newNotification.save();
+    res.status(201).json(savedNotification);
   } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Failed to add the Notification' });
+    res.status(400).json({ error: error.message });
   }
-
 });
 
-// Read all users
+// Get all notifications for a user
 router.get('/', async (req, res) => {
   try {
-
-        // Destructure query parameters (with default values)
-        const { isListed, isBorrowed, author,userId } = req.query;
     
-        // Build the query object
-        let query = {};
-
-        if (mongoose.Types.ObjectId.isValid(userId)) {
-          query.owner = new mongoose.Types.ObjectId(userId);
-        }      
-
-        const noti = await Notification.find(query);
-        res.send(noti);
-
-  } catch (err) {
-    res.status(500).send(err);
+    const notifications = await Notification.find();
+    res.status(200).json(notifications);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-
-
-
-
-// Update a book
-router.put('/:id', async (req, res) => {
+// Get all notifications for a user
+router.get('/user/:userId', async (req, res) => {
   try {
-    const book = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!book) return res.status(404).send();
-    res.send(book);
-  } catch (err) {
-    res.status(400).send(err);
+    const userId = req.params.userId;
+    const notifications = await Notification.find({ UserID: userId });
+    const unreadCount = notifications.filter(notification => !notification.IsRead).length;
+    res.status(200).json({notifications,unreadCount});
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Delete a book
+
+
+// Mark a notification as read
+router.put('/:id/read', async (req, res) => {
+  try {
+    const notificationId = req.params.id;
+    const updatedNotification = await Notification.findByIdAndUpdate(
+      notificationId,
+      { IsRead: true },
+      { new: true } // Return the updated document
+    );
+
+    if (!updatedNotification) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+    res.status(200).json(updatedNotification);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Delete a notification
 router.delete('/:id', async (req, res) => {
   try {
-    const book = await User.findByIdAndDelete(req.params.id);
-    if (!book) return res.status(404).send();
-    res.send(book);
-  } catch (err) {
-    res.status(500).send(err);
+    const notificationId = req.params.id;
+    const deletedNotification = await Notification.findByIdAndDelete(notificationId);
+
+    if (!deletedNotification) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+    res.status(200).json({ message: 'Notification deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Mark a notification as read
+router.patch('/:notificationId', async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+
+    const updatedNotification = await Notification.findByIdAndUpdate(
+      notificationId,
+      { IsRead: true },
+      { new: true }
+    );
+
+    if (!updatedNotification) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+
+    res.status(200).json(updatedNotification);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

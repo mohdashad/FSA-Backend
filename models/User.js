@@ -1,23 +1,52 @@
-// models/User.js
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
 
 const userSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  city: { type: String, required: true },
-  state: { type: String, required: true },
-  street: { type: String, required: true },
-  postalCode: { type: String, required: true }
-});
-
-// Hash password before saving the user
-userSchema.pre('save', async function (next) {
-  if (this.isModified('password')) {
-    this.password = await bcrypt.hash(this.password, 10); // Hash the password
-  }
-  next();
+  UserID: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: () => new mongoose.Types.ObjectId(), // Auto-generate ID
+    unique: true,
+  },
+  Name: {
+    type: String,
+    required: true,
+    trim: true,
+  },
+  Email: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    validate: {
+      validator: function (v) {
+        return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
+      },
+      message: 'Please enter a valid email address.',
+    },
+  },
+  PasswordHash: {
+    type: String,
+    required: true,
+  },
+  Address: {
+    type: String,
+    trim: true,
+  },
+  ProfilePicture: {
+    type: String, // Store URL or file path to the profile picture
+    default: null,
+  },
+  RegistrationDate: {
+    type: Date,
+    default: Date.now,
+  },
+  ResetToken: {
+    type: String, // Store token for password recovery
+    default: null,
+  },
+  IsActive: {
+    type: Boolean,
+    default: true,
+  },
 });
 
 module.exports = mongoose.model('User', userSchema);
